@@ -33,3 +33,7 @@ We expect that the /api/status call will return json containing at least:
 ``
 
 All other things are just to help yourself (version? git-commit-sha?)
+
+# Repository
+
+https://github.com/Q42/Deployment-Shepherd
