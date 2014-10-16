@@ -35,6 +35,9 @@
     <Reference Include="Newtonsoft.Json">
       <HintPath>..\packages\Newtonsoft.Json.6.0.5\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
+    <Reference Include="Octokit">
+      <HintPath>..\packages\Octokit.0.5.2\lib\net45\Octokit.dll</HintPath>
+    </Reference>
     <Reference Include="PowerArgs">
       <HintPath>..\packages\PowerArgs.2.0.6.1\lib\net40\PowerArgs.dll</HintPath>
     </Reference>
@@ -55,7 +58,9 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ApiStatusResponse.cs" />
     <Compile Include="Program.cs" />
+    <Compile Include="ProgramArguments.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
