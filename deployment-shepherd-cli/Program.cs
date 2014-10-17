@@ -112,7 +112,7 @@ namespace deployment_shepherd_cli
 				var isClosed = await isClosedPullRequest(githubClient, args, slotContainingPullRequest.Item2.PullrequestId.Value);
 				if (isClosed)
 				{
-					closedPullRequestSlot = slotContainingPullRequest.Item2.BranchName;
+					closedPullRequestSlot = slotContainingPullRequest.Item1;
 					break;
 				}
 			}
