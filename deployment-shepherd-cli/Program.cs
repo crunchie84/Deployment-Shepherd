@@ -2,7 +2,10 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
+using System.Reactive.Linq;
+using System.Reactive.Threading.Tasks;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -24,7 +27,7 @@ namespace deployment_shepherd_cli
 			try
 			{
 				var parsedArgs = Args.Parse<ProgramArguments>(args);
-				var task = FindDeploymentSlot(parsedArgs);
+				var task = findDeploymentSlot(parsedArgs);
 				task.Wait();
 				Console.WriteLine(task.Result);
 
@@ -44,36 +47,44 @@ namespace deployment_shepherd_cli
 			}
 		}
 
-		private static async Task<string> FindDeploymentSlot(ProgramArguments args)
+		private static async Task<string> findDeploymentSlot(ProgramArguments args)
 		{
-			var slotItems = new List<Tuple<string, ApiStatusResponse>>();
-			for (var i = 1; i <= 4; i++)
+			var githubClient = new GitHubClient(new ProductHeaderValue("Q42.PullRequestCommenter"))
 			{
-				var slotId = "pullrequestslot" + i;
-				var url = String.Format("http://{0}/api/status", String.Format(args.BaseUrl, slotId));
-				using (var httpClient = new HttpClient())
-				{
-					consoleWriteLineIfDebug(args, "going to fetch: " + url);
+				Credentials = new Credentials(args.PersonalGithubAccessToken)
+			};
+			var pullRequestId = parsePullRequestIdFromBranchName(args.BranchName);
 
-					var result = await httpClient.GetAsync(url);
-					consoleWriteLineIfDebug(args, "response status code = " + result.StatusCode);
-
-					ApiStatusResponse apiResponse = null;
-					if (result.IsSuccessStatusCode)
+			var slotItems = await Observable.Range(1, 4)
+				.Select(idx => "pullrequestslot" + idx)
+				.Select(slotId =>
+					/* go and find what lives in this slot */
+					Observable.Defer(() =>
 					{
-						try
-						{
-							apiResponse = JsonConvert.DeserializeObject<ApiStatusResponse>(await result.Content.ReadAsStringAsync());
-							apiResponse.PullrequestId = parsePullRequestIdFromBranchName(apiResponse.BranchName);
-						}
-						catch (Exception ex)
-						{
-							consoleWriteLineIfDebug(args, "Failed to parse api/status response: " + ex.Message);
-						}
-					}
-					slotItems.Add(Tuple.Create(slotId, apiResponse));
-				}
-			}
+						var url = String.Format("http://{0}/api/status", String.Format(args.BaseUrl, slotId));
+						consoleWriteLineIfDebug(args, "Going to fetch " + url);
+						
+						var wc = new WebClient();
+						return wc.DownloadStringTaskAsync(url)
+							.ToObservable()
+							.Do(response => consoleWriteLineIfDebug(args, "Got response of " + url + " : " + response))
+							.Select(JsonConvert.DeserializeObject<ApiStatusResponse>)
+							.Select(apiStatus =>
+							{
+								/* determine if what lives in this slot is a pull request */
+								apiStatus.PullrequestId = parsePullRequestIdFromBranchName(apiStatus.BranchName);
+								apiStatus.DeploySlotId = slotId;
+								return Tuple.Create(slotId, apiStatus);
+							});
+					})
+					.Retry(3) // retry 3 times to poll the slot
+					.Catch<Tuple<string, ApiStatusResponse>, Exception>(ex => Observable.Return(Tuple.Create(slotId, (ApiStatusResponse)null))) //report that this slot does not contain anything usefull
+				)
+				.SelectMany(_ => _)
+				.ToList();
+
+			// TODO sort the slots based on the rules (same branch, empty slot, contains closed pr, last compile date asc)
+
 
 			var currentSlot =
 				slotItems.Where(sl => sl.Item2 != null && sl.Item2.BranchName == args.BranchName)
@@ -86,11 +97,6 @@ namespace deployment_shepherd_cli
 				return currentSlot;
 			}
 
-			var pullRequestId = parsePullRequestIdFromBranchName(args.BranchName);
-			var githubClient = new GitHubClient(new ProductHeaderValue("Q42.PullRequestCommenter"))
-			{
-				Credentials = new Credentials(args.PersonalGithubAccessToken)
-			};
 
 			var anEmptySlot = slotItems.Where(sl => sl.Item2 == null)
 				.Select(sl => sl.Item1)
