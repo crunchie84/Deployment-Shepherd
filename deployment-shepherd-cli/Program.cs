@@ -47,6 +47,29 @@ namespace deployment_shepherd_cli
 			}
 		}
 
+		private static async Task<Tuple<string, ApiStatusResponse, bool>> getStatusObjectWithGithubData(ProgramArguments args, string slotId, GitHubClient githubClient)
+		{
+			var url = String.Format("http://{0}/api/status", String.Format(args.BaseUrl, slotId));
+			var wc = new WebClient();
+			var apiStatusString = await wc.DownloadStringTaskAsync(url);
+			consoleWriteLineIfDebug(args, "Got response of " + url + " : " + apiStatusString);
+			var apiStatus = JsonConvert.DeserializeObject<ApiStatusResponse>(apiStatusString);
+
+			/* determine if what lives in this slot is a pull request */
+			apiStatus.PullrequestId = parsePullRequestIdFromBranchName(apiStatus.BranchName);
+			apiStatus.DeploySlotId = slotId;
+			return Tuple.Create(slotId, apiStatus, await isClosedPullRequest(githubClient, args, apiStatus.PullrequestId.Value));
+		}
+
+		private static IObservable<Tuple<string, ApiStatusResponse, bool>> retrieveSlotStatusWithFallBack(ProgramArguments args, string slotId, GitHubClient githubClient)
+		{
+			return Observable
+				.Defer(() => getStatusObjectWithGithubData(args, slotId, githubClient).ToObservable())
+				.Retry(3) // retry 3 times to poll the slot or use the fallback
+				.Catch<Tuple<string, ApiStatusResponse, bool>, Exception>(
+					ex => Observable.Return(Tuple.Create(slotId, (ApiStatusResponse)null, true)));
+		}
+
 		private static async Task<string> findDeploymentSlot(ProgramArguments args)
 		{
 			var githubClient = new GitHubClient(new ProductHeaderValue("Q42.PullRequestCommenter"))
@@ -57,39 +80,10 @@ namespace deployment_shepherd_cli
 
 			var slotItems = await Observable.Range(1, 4)
 				.Select(idx => "pullrequestslot" + idx)
-				.Select(slotId =>
-					/* go and find what lives in this slot */
-					Observable.Defer(() =>
-					{
-						var url = String.Format("http://{0}/api/status", String.Format(args.BaseUrl, slotId));
-						consoleWriteLineIfDebug(args, "Going to fetch " + url);
-						
-						var wc = new WebClient();
-						return wc.DownloadStringTaskAsync(url)
-							.ToObservable()
-							.Do(response => consoleWriteLineIfDebug(args, "Got response of " + url + " : " + response))
-							.Select(JsonConvert.DeserializeObject<ApiStatusResponse>)
-							.Select(apiStatus =>
-							{
-								/* determine if what lives in this slot is a pull request */
-								apiStatus.PullrequestId = parsePullRequestIdFromBranchName(apiStatus.BranchName);
-								apiStatus.DeploySlotId = slotId;
-								return Tuple.Create(slotId, apiStatus);
-							});
-					})
-					.Retry(3) // retry 3 times to poll the slot
-					.Catch<Tuple<string, ApiStatusResponse>, Exception>(ex => Observable.Return(Tuple.Create(slotId, (ApiStatusResponse)null))) //report that this slot does not contain anything usefull
-				)
-				.SelectMany(_ => _)
+				.SelectMany(slotId => retrieveSlotStatusWithFallBack(args, slotId, githubClient))
 				.ToList();
 
-			// TODO sort the slots based on the rules (same branch, empty slot, contains closed pr, last compile date asc)
-
-
-			var currentSlot =
-				slotItems.Where(sl => sl.Item2 != null && sl.Item2.BranchName == args.BranchName)
-				.Select(sl => sl.Item1)
-				.FirstOrDefault();
+			var currentSlot = slotItems.Where(sl => sl.Item2 != null && sl.Item2.BranchName == args.BranchName).Select(sl => sl.Item1).FirstOrDefault();
 			if (!String.IsNullOrEmpty(currentSlot))
 			{
 				// we are already deployed here, no further comments are required (if we are a pull request)
@@ -97,44 +91,31 @@ namespace deployment_shepherd_cli
 				return currentSlot;
 			}
 
-
-			var anEmptySlot = slotItems.Where(sl => sl.Item2 == null)
-				.Select(sl => sl.Item1)
-				.FirstOrDefault();
+			var anEmptySlot = slotItems.Where(sl => sl.Item2 == null).Select(sl => sl.Item1).FirstOrDefault();
 			if (!String.IsNullOrEmpty(anEmptySlot))
 			{
 				consoleWriteLineIfDebug(args, "We found an empty slot in which we can deploy = " + anEmptySlot);
 
 				if (pullRequestId != null)
 					await addPullRquestCommentAboutDeploymentSlot(githubClient, args, pullRequestId.Value, anEmptySlot);
+
 				return anEmptySlot;
 			}
 
 			// find a slot with a closed pull request in it
-			string closedPullRequestSlot = null;
-			var slotsContainingPullRequests = slotItems.Where(sl => sl.Item2 != null && sl.Item2.PullrequestId != null);
-			foreach (var slotContainingPullRequest in slotsContainingPullRequests)
+			var aClosedPullRequestSlot = slotItems.Where(sl => sl.Item2 != null && sl.Item2.PullrequestId != null && sl.Item3 == true).Select(sl => sl.Item1).FirstOrDefault();
+			if (!String.IsNullOrEmpty(aClosedPullRequestSlot))
 			{
-				var isClosed = await isClosedPullRequest(githubClient, args, slotContainingPullRequest.Item2.PullrequestId.Value);
-				if (isClosed)
-				{
-					closedPullRequestSlot = slotContainingPullRequest.Item1;
-					break;
-				}
-			}
-			if (!String.IsNullOrWhiteSpace(closedPullRequestSlot))
-			{
-				consoleWriteLineIfDebug(args, String.Format("Found a slot ({0}) containing a closed pullrequest which we are going to use", closedPullRequestSlot));
+				consoleWriteLineIfDebug(args, String.Format("Found a slot ({0}) containing a closed pullrequest which we are going to use", aClosedPullRequestSlot));
 
 				if (pullRequestId != null)
-					await addPullRquestCommentAboutDeploymentSlot(githubClient, args, pullRequestId.Value, closedPullRequestSlot);
-				return closedPullRequestSlot;
+					await addPullRquestCommentAboutDeploymentSlot(githubClient, args, pullRequestId.Value, anEmptySlot);
+
+				return aClosedPullRequestSlot;
 			}
 
 			// last resort - use the oldest deploy
-			var theOldestSlot = slotItems.Where(sl => sl.Item2 != null)
-				.OrderBy(sl => sl.Item2.BuildDate)
-				.FirstOrDefault();
+			var theOldestSlot = slotItems.Where(sl => sl.Item2 != null).OrderBy(sl => sl.Item2.BuildDate).FirstOrDefault();
 			if (theOldestSlot != null)
 			{
 				consoleWriteLineIfDebug(args, "We found the oldest slot in which we can deploy = " + theOldestSlot.Item1);
@@ -147,6 +128,7 @@ namespace deployment_shepherd_cli
 
 				if (pullRequestId != null)
 					await addPullRquestCommentAboutDeploymentSlot(githubClient, args, pullRequestId.Value, theOldestSlot.Item1);
+
 				return theOldestSlot.Item1;
 			}
 
