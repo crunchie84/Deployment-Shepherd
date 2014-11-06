@@ -44,7 +44,7 @@ We expect that the /api/status call will return json containing at least:
     }
 ``
 
-All other things are just to help yourself (version? git-commit-sha?)
+All other things are just to help yourself (version? git-commit-sha?). Please do note that for this tool to be effective the branchName returned should match with the branchname format passed to this tool (`refs/heads/develop` vs `develop` will not work properly).
 
 # Repository
 
