@@ -109,7 +109,7 @@ namespace deployment_shepherd_cli
 				consoleWriteLineIfDebug(args, String.Format("Found a slot ({0}) containing a closed pullrequest which we are going to use", aClosedPullRequestSlot));
 
 				if (pullRequestId != null)
-					await addPullRquestCommentAboutDeploymentSlot(githubClient, args, pullRequestId.Value, anEmptySlot);
+					await addPullRquestCommentAboutDeploymentSlot(githubClient, args, pullRequestId.Value, aClosedPullRequestSlot);
 
 				return aClosedPullRequestSlot;
 			}
