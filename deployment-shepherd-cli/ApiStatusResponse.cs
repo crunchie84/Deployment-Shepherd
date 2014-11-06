@@ -7,6 +7,8 @@ namespace deployment_shepherd_cli
 	/// </summary>
 	public sealed class ApiStatusResponse
 	{
+		public string DeploySlotId { get; set; } 
+
 		/// <summary>
 		/// needed to be supplied by the deployed application so we can determine which branch it is
 		/// </summary>
