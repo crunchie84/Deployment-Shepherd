@@ -58,7 +58,7 @@ namespace deployment_shepherd_cli
 			/* determine if what lives in this slot is a pull request */
 			apiStatus.PullrequestId = parsePullRequestIdFromBranchName(apiStatus.BranchName);
 			apiStatus.DeploySlotId = slotId;
-			return Tuple.Create(slotId, apiStatus, await isClosedPullRequest(githubClient, args, apiStatus.PullrequestId.Value));
+			return Tuple.Create(slotId, apiStatus, await isClosedPullRequest(githubClient, args, apiStatus.PullrequestId));
 		}
 
 		private static IObservable<Tuple<string, ApiStatusResponse, bool>> retrieveSlotStatusWithFallBack(ProgramArguments args, string slotId, GitHubClient githubClient)
@@ -148,10 +148,12 @@ namespace deployment_shepherd_cli
 				Console.WriteLine("[DEBUG] " + message);
 		}
 
-		private static async Task<bool> isClosedPullRequest(GitHubClient githubClient, ProgramArguments args,
-			int pullRequestId)
+		private static async Task<bool> isClosedPullRequest(GitHubClient githubClient, ProgramArguments args, int? pullRequestId)
 		{
-			var pr = await githubClient.PullRequest.Get(args.Owner, args.Repository, pullRequestId);
+			if (pullRequestId == null)
+				return true;
+
+			var pr = await githubClient.PullRequest.Get(args.Owner, args.Repository, pullRequestId.Value);
 			return pr.State == ItemState.Closed;
 		}
 
