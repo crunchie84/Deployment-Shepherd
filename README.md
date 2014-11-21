@@ -30,8 +30,7 @@ If you append `-d` to the arguments the application will also write debug inform
 
 ## Response
 
-'pullrequest1' or '' if not needing to deploy to a subdomain slot.
-
+'pullrequestslot1' or '' if not needing to deploy to a subdomain slot.
 
 ## /api/status response json
 
