@@ -2,7 +2,7 @@
 
 This tool is created to determine based on the given website url and branchname which subdir/slot it should be deployed to. It also communicates with Github to comment on pull requests to signal that they are being deployed or overwritten. It has mainly been developed for usage with Azure but can easily be adapted for different deployment solutions. It uses the following conventions:
 
-- The website is deployed somewhere (mywebsite.azurewebsites.net)
+- The website is deployed somewhere (`mywebsite.azurewebsites.net`)
 - Individual deploy slots are named `pullrequestslot1` till `pullrequestslot4` and can be found by using the replacement char '{0}' in the given url
  (`mywebsite-{0}.azurewebsites.net`)
 - It will poll all slots for activity by fetching `/api/status`:
