@@ -9,8 +9,7 @@ This tool is created to determine based on the given website url and branchname 
  - 500 => Slot is broken
  - 404 => Slot is empty
  - 200 => Go and parse json details
-   - Ok => Fetch _compile date_ + _branch name_ from status json.
-   - Failure => Slot is assumed broken.
+   * Ok => Fetch _compile date_ + _branch name_ from status json. Failure => Slot is assumed broken.
  - Based on the results per slot it will determine which slot to output as deployment environment to use
 
 If all slots are filled it will try to find if a slot is filled with a closed pull request. If no slots contain closed pull requests it will take the oldest deployment. If that happens to be an open pull request it will comment on the pull request that it is no longer available at the deployment url.
