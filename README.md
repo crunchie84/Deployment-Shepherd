@@ -6,14 +6,16 @@ This tool is created to determine based on the given website url and branchname 
 - Individual deploy slots are named `pullrequestslot1` till `pullrequestslot4` and can be found by using the replacement char '{0}' in the given url
  (`mywebsite-{0}.azurewebsites.net`)
 - It will poll all slots for activity by fetching `/api/status`:
- - 500 => slot is broken
- - 404 => slot is empty
- - 200 => parse details, fetch compile date + branch name from status json
-- Based on the results per slot it will determine which slot to output as deployment environment to use
+ - 500 => Slot is broken
+ - 404 => Slot is empty
+ - 200 => Go and parse json details
+   - Ok => Fetch _compile date_ + _branch name_ from status json.
+   - Failure => Slot is assumed broken.
+ - Based on the results per slot it will determine which slot to output as deployment environment to use
 
 If all slots are filled it will try to find if a slot is filled with a closed pull request. If no slots contain closed pull requests it will take the oldest deployment. If that happens to be an open pull request it will comment on the pull request that it is no longer available at the deployment url.
 
-If the branch for which we are searching is a pull request (`pull/123`) we will append a comment to the pull request signaling where the code is going to be deployed.
+If the branch for which we are searching a deployment slot is a pull request (`pull/123`) we will append a comment to the pull request designating where the code is going to be deployed.
 
 
 ## Arguments
